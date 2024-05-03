@@ -53,6 +53,11 @@ class CombineStartswithEndswith(SimpleCodemod, NameResolutionMixin):
             args=args,
         )
 
+    def check_calls_same_instance(
+        self, left_call: cst.Call, right_call: cst.Call
+    ) -> bool:
+        return left_call.func.value.value == right_call.func.value.value
+
     def matches_call_or_call(
         self, node: cst.BooleanOperation, call_matcher: m.Call
     ) -> bool:
@@ -60,9 +65,10 @@ class CombineStartswithEndswith(SimpleCodemod, NameResolutionMixin):
         call_or_call = m.BooleanOperation(
             left=call_matcher, operator=m.Or(), right=call_matcher
         )
-        return (
-            m.matches(node, call_or_call)  # Same Func
-            and node.left.func.value.value == node.right.func.value.value
+        return m.matches(
+            node, call_or_call
+        ) and self.check_calls_same_instance(  # Same Func
+            node.left, node.right
         )  # Same Instance
 
     def matches_call_or_boolop(
@@ -76,9 +82,10 @@ class CombineStartswithEndswith(SimpleCodemod, NameResolutionMixin):
             operator=m.Or(),
             right=m.BooleanOperation(left=call_matcher),
         )
-        return (
-            m.matches(node, call_or_boolop)  # Same Func
-            and node.left.func.value.value == node.right.left.func.value.value
+        return m.matches(
+            node, call_or_boolop
+        ) and self.check_calls_same_instance(  # Same Func
+            node.left, node.right.left
         )  # Same Instance
 
     def matches_boolop_or_call(
@@ -92,9 +99,10 @@ class CombineStartswithEndswith(SimpleCodemod, NameResolutionMixin):
             operator=m.Or(),
             right=call_matcher,
         )
-        return (
-            m.matches(node, boolop_or_call)  # Same Func
-            and node.left.right.func.value.value == node.right.func.value.value
+        return m.matches(
+            node, boolop_or_call
+        ) and self.check_calls_same_instance(  # Same Func
+            node.left.right, node.right
         )  # Same Instance
 
     def combine_calls(self, *calls: cst.Call) -> cst.Call:
