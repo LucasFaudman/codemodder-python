@@ -14,26 +14,6 @@ class CombineStartswithEndswith(SimpleCodemod, NameResolutionMixin):
     )
     change_description = "Use tuple of matches instead of boolean expression"
 
-    args = [
-        m.Arg(
-            value=m.Tuple()
-            | m.SimpleString()
-            | m.ConcatenatedString()
-            | m.FormattedString()
-            | m.Name()
-        )
-    ]
-
-    startswith_call_matcher = m.Call(
-        func=m.Attribute(value=m.Name(), attr=m.Name("startswith")),
-        args=args,
-    )
-
-    endswith_call_matcher = m.Call(
-        func=m.Attribute(value=m.Name(), attr=m.Name("endswith")),
-        args=args,
-    )
-
     def leave_BooleanOperation(
         self, original_node: cst.BooleanOperation, updated_node: cst.BooleanOperation
     ) -> cst.CSTNode:
@@ -42,20 +22,36 @@ class CombineStartswithEndswith(SimpleCodemod, NameResolutionMixin):
         ):
             return updated_node
 
-        for call_matcher in (self.startswith_call_matcher, self.endswith_call_matcher):
+        for call_matcher in map(self.make_call_matcher, ("startswith", "endswith")):
             if self.matches_call_or_call(updated_node, call_matcher):
                 self.report_change(original_node)
                 return self.combine_calls(updated_node.left, updated_node.right)
 
             if self.matches_call_or_boolop(updated_node, call_matcher):
                 self.report_change(original_node)
-                return self.call_or_boolop_fold_right(updated_node)
+                return self.combine_call_or_boolop_fold_right(updated_node)
 
             if self.matches_boolop_or_call(updated_node, call_matcher):
                 self.report_change(original_node)
-                return self.boolop_or_call_fold_left(updated_node)
+                return self.combine_boolop_or_call_fold_left(updated_node)
 
         return updated_node
+
+    def make_call_matcher(self, func_name: str) -> m.Call:
+        args = [
+            m.Arg(
+                value=m.Tuple()
+                | m.SimpleString()
+                | m.ConcatenatedString()
+                | m.FormattedString()
+                | m.Name()
+            )
+        ]
+
+        return m.Call(
+            func=m.Attribute(value=m.Name(), attr=m.Name(func_name)),
+            args=args,
+        )
 
     def matches_call_or_call(
         self, node: cst.BooleanOperation, call_matcher: m.Call
@@ -125,7 +121,7 @@ class CombineStartswithEndswith(SimpleCodemod, NameResolutionMixin):
         new_arg = cst.Arg(value=cst.Tuple(elements=elements))
         return cst.Call(func=call.func, args=[new_arg])
 
-    def call_or_boolop_fold_right(
+    def combine_call_or_boolop_fold_right(
         self, node: cst.BooleanOperation
     ) -> cst.BooleanOperation:
         new_left = self.combine_calls(node.left, node.right.left)
@@ -134,7 +130,7 @@ class CombineStartswithEndswith(SimpleCodemod, NameResolutionMixin):
             left=new_left, operator=node.right.operator, right=new_right
         )
 
-    def boolop_or_call_fold_left(
+    def combine_boolop_or_call_fold_left(
         self, node: cst.BooleanOperation
     ) -> cst.BooleanOperation:
         new_left = node.left.left
